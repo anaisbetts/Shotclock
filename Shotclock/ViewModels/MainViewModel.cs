@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Reactive;
 using System.Reactive.Linq;
+using System.Runtime.InteropServices;
 using System.Text;
 using LibGit2Sharp;
 using ReactiveUI;
@@ -80,7 +81,19 @@ namespace Shotclock.ViewModels
 
         TimeSpan getIdleTime()
         {
-            throw new NotImplementedException();
+            var idleTime = new LASTINPUTINFO { cbSize = LASTINPUTINFO.SizeOf };
+            GetLastInputInfo(ref idleTime);
+
+            var currentTicks = GetTickCount();
+
+            long deltaTicks;
+            if (idleTime.dwTime > currentTicks) {
+                deltaTicks = (((long)currentTicks + UInt32.MaxValue) - idleTime.dwTime);
+            } else {
+                deltaTicks = currentTicks - idleTime.dwTime;
+            }
+
+            return new TimeSpan(deltaTicks);
         }
 
         Commit fetchLatestCommitForHead(string repositoryRoot)
@@ -97,5 +110,19 @@ namespace Shotclock.ViewModels
         {
             throw new NotImplementedException();
         }
+
+        [DllImport("user32.dll")]
+        static extern bool GetLastInputInfo(ref LASTINPUTINFO plii);
+
+        [DllImport("kernel32.dll")]
+        static extern UInt32 GetTickCount();
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    struct LASTINPUTINFO
+    {
+        public static readonly UInt32 SizeOf = (UInt32)Marshal.SizeOf(typeof(LASTINPUTINFO));
+        public UInt32 cbSize;
+        public UInt32 dwTime;
     }
 }
