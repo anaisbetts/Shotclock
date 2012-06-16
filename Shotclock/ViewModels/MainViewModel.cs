@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Reactive;
 using System.Reactive.Linq;
@@ -98,17 +99,39 @@ namespace Shotclock.ViewModels
 
         Commit fetchLatestCommitForHead(string repositoryRoot)
         {
-            throw new NotImplementedException();
+            if (String.IsNullOrEmpty(repositoryRoot)) {
+                return null;
+            }
+
+            var repo = default(Repository);
+            try {
+                repo = new Repository(repositoryRoot);
+                return repo.Commits.FirstOrDefault();
+            } catch (Exception ex) {
+                this.Log().ErrorException("Couldn't open repo", ex);
+                return null;
+            } finally {
+                if (repo != null) {
+                    repo.Dispose();
+                }
+            }
         }
 
         IObservable<Unit> createFileChangeWatch(string repositoryRoot)
         {
-            throw new NotImplementedException();
+            return Observable.Never<Unit>();
         }
 
-        string findRepositoryRoot()
+        string findRepositoryRoot(string rootDirectory = null)
         {
-            throw new NotImplementedException();
+            rootDirectory = rootDirectory ?? RepositoryRoot;
+
+            if (Directory.Exists(Path.Combine(rootDirectory, ".git"))) {
+                return rootDirectory;
+            }
+
+            var di = new DirectoryInfo(rootDirectory);
+            return (di.Parent.Exists ? findRepositoryRoot(di.Parent.FullName) : null);
         }
 
         [DllImport("user32.dll")]
