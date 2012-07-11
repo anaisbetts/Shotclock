@@ -16,7 +16,7 @@ namespace Shotclock.ViewModels
     public interface IMainViewModel : IReactiveNotifyPropertyChanged
     {
         bool IsVersionControlled { get; }
-        string RepositoryRoot { get;  }
+        string RepositoryRoot { get; }
 
         IObservable<Unit> RefreshNotification { get; }
         IObservable<Unit> GotFocusNotification { get; }
@@ -49,29 +49,29 @@ namespace Shotclock.ViewModels
             get { return _CommitAge.Value; }
         }
 
-        public MainViewModel(IObservable<Unit> gotFocusNotification = null, IObservable<Unit> refreshNotification = null)
+        public MainViewModel(IObservable<Unit> gotFocusNotification = null, IObservable<Unit> refreshNotification = null, Func<TimeSpan> getIdleTime = null)
         {
-            RepositoryRoot = findRepositoryRoot();
+            RepositoryRoot = findRepositoryRoot(Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location));
             IsVersionControlled = (!String.IsNullOrEmpty(RepositoryRoot));
 
             GotFocusNotification = gotFocusNotification ?? Observable.Never<Unit>();
-            RefreshNotification = refreshNotification ?? 
-                (IsVersionControlled ? createFileChangeWatch(RepositoryRoot) : Observable.Never<Unit>());
+            RefreshNotification = refreshNotification ??
+                (IsVersionControlled ? createFileChangeWatch(RepositoryRoot).Select(_ => Unit.Default) : Observable.Never<Unit>());
 
-            Observable.Merge(gotFocusNotification, refreshNotification)
+            Observable.Merge(GotFocusNotification, RefreshNotification)
                 .Where(_ => IsVersionControlled)
                 .Select(_ => fetchLatestCommitForHead(RepositoryRoot))
                 .Select(x => x.Author.When)
-                .ToProperty(this, x => LatestCommit, DateTimeOffset.MinValue);
+                .ToProperty(this, x => x.LatestCommit, DateTimeOffset.MinValue);
 
             var shouldUpdateClock = Observable.Merge(
                 gotFocusNotification,
                 this.WhenAny(x => x.LatestCommit, _ => Unit.Default),
-                Observable.Timer(TimeSpan.Zero, TimeSpan.FromSeconds(1.0)).Select(_ => Unit.Default)
+                Observable.Timer(TimeSpan.Zero, TimeSpan.FromSeconds(1.0), RxApp.DeferredScheduler).Select(_ => Unit.Default)
             ).Where(_ => IsVersionControlled);
 
             shouldUpdateClock
-                .Select(_ => getIdleTime())
+                .Select(_ => getIdleTime != null ? getIdleTime() : this.getIdleTime())
                 .Buffer(2, 1).Where(x => x[1] < TimeSpan.FromSeconds(5.0) && x[0] > TimeSpan.FromSeconds(30.0))
                 .Select(_ => RxApp.DeferredScheduler.Now)
                 .StartWith(RxApp.DeferredScheduler.Now)

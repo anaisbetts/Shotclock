@@ -1,8 +1,10 @@
 ﻿<Window x:Class="Shotclock.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="MainWindow" Height="350" Width="525">
+        Title="MainWindow" Height="350" Width="525" Background="Black">
     <Grid>
-        
+        <Viewbox>
+            <TextBlock FontSize="64" Text="{Binding CommitAge}" HorizontalAlignment="Center"  VerticalAlignment="Center"  Foreground="White" />
+        </Viewbox>
     </Grid>
 </Window>
