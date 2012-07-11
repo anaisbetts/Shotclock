@@ -5,6 +5,7 @@ using System.Linq;
 using System.Reactive;
 using System.Reactive.Disposables;
 using System.Reactive.Linq;
+using System.Reactive.Subjects;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -55,15 +56,24 @@ namespace Shotclock.ViewModels
             IsVersionControlled = (!String.IsNullOrEmpty(RepositoryRoot));
 
             GotFocusNotification = gotFocusNotification ?? Observable.Never<Unit>();
-            RefreshNotification = refreshNotification ??
-                (IsVersionControlled ? 
-                    createFileChangeWatch(Path.Combine(RepositoryRoot, ".git")).Select(_ => Unit.Default) : 
-                    Observable.Never<Unit>());
+
+            var fswWatch = createFileChangeWatch(Path.Combine(RepositoryRoot, ".git"))
+                .Select(_ => Unit.Default)
+                .Multicast(new Subject<Unit>());
+
+            if (refreshNotification != null) {
+                RefreshNotification = refreshNotification;
+            } else {
+                RefreshNotification = fswWatch;
+                fswWatch.Subscribe(_ => Console.WriteLine("Changed!"));
+                fswWatch.Connect();
+            }
 
             Observable.Merge(GotFocusNotification, RefreshNotification)
                 .Where(_ => IsVersionControlled)
                 .Select(_ => fetchLatestCommitForHead(RepositoryRoot))
-                .Select(x => x.Author.When)
+                //.Select(x => x.Author.When)
+                .Select(_ => DateTimeOffset.Now)
                 .ToProperty(this, x => x.LatestCommit, DateTimeOffset.MinValue);
 
             var shouldUpdateClock = Observable.Merge(
@@ -123,8 +133,7 @@ namespace Shotclock.ViewModels
 
         IObservable<string> createFileChangeWatch(string target)
         {
-            return Observable.Create<string>(subj =>
-            {
+            return Observable.Create<string>(subj => {
                 var fsw = new FileSystemWatcher(target);
 
                 var anyEvent = Observable.Merge(
@@ -132,6 +141,8 @@ namespace Shotclock.ViewModels
                     Observable.FromEventPattern<FileSystemEventHandler, FileSystemEventArgs>(x => fsw.Created += x, x => fsw.Created -= x).Select(x => x.EventArgs.FullPath),
                     Observable.FromEventPattern<FileSystemEventHandler, FileSystemEventArgs>(x => fsw.Deleted += x, x => fsw.Deleted -= x).Select(x => x.EventArgs.FullPath),
                     Observable.FromEventPattern<RenamedEventHandler, RenamedEventArgs>(x => fsw.Renamed += x, x => fsw.Renamed -= x).Select(x => x.EventArgs.FullPath));
+
+                fsw.EnableRaisingEvents = true;
 
                 return new CompositeDisposable(anyEvent.Subscribe(subj), fsw);
             }).Throttle(TimeSpan.FromMilliseconds(1200), RxApp.TaskpoolScheduler).ObserveOn(RxApp.DeferredScheduler);
