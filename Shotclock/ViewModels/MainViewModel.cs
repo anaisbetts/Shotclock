@@ -3,7 +3,9 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reactive;
+using System.Reactive.Disposables;
 using System.Reactive.Linq;
+using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Text;
 using LibGit2Sharp;
@@ -117,9 +119,20 @@ namespace Shotclock.ViewModels
             }
         }
 
-        IObservable<Unit> createFileChangeWatch(string repositoryRoot)
+        IObservable<string> createFileChangeWatch(string target)
         {
-            return Observable.Never<Unit>();
+            return Observable.Create<string>(subj =>
+            {
+                var fsw = new FileSystemWatcher(target);
+
+                var anyEvent = Observable.Merge(
+                    Observable.FromEventPattern<FileSystemEventHandler, FileSystemEventArgs>(x => fsw.Changed += x, x => fsw.Changed -= x).Select(x => x.EventArgs.FullPath),
+                    Observable.FromEventPattern<FileSystemEventHandler, FileSystemEventArgs>(x => fsw.Created += x, x => fsw.Created -= x).Select(x => x.EventArgs.FullPath),
+                    Observable.FromEventPattern<FileSystemEventHandler, FileSystemEventArgs>(x => fsw.Deleted += x, x => fsw.Deleted -= x).Select(x => x.EventArgs.FullPath),
+                    Observable.FromEventPattern<RenamedEventHandler, RenamedEventArgs>(x => fsw.Renamed += x, x => fsw.Renamed -= x).Select(x => x.EventArgs.FullPath));
+
+                return new CompositeDisposable(anyEvent.Subscribe(subj), fsw);
+            }).Throttle(TimeSpan.FromMilliseconds(1200), RxApp.TaskpoolScheduler).ObserveOn(RxApp.DeferredScheduler);
         }
 
         string findRepositoryRoot(string rootDirectory = null)
