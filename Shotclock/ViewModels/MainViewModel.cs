@@ -56,7 +56,9 @@ namespace Shotclock.ViewModels
 
             GotFocusNotification = gotFocusNotification ?? Observable.Never<Unit>();
             RefreshNotification = refreshNotification ??
-                (IsVersionControlled ? createFileChangeWatch(RepositoryRoot).Select(_ => Unit.Default) : Observable.Never<Unit>());
+                (IsVersionControlled ? 
+                    createFileChangeWatch(Path.Combine(RepositoryRoot, ".git")).Select(_ => Unit.Default) : 
+                    Observable.Never<Unit>());
 
             Observable.Merge(GotFocusNotification, RefreshNotification)
                 .Where(_ => IsVersionControlled)
